@@ -6,6 +6,7 @@
     <title>Quản lý CME - BV Nhi đồng Cần Thơ</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -67,6 +68,7 @@
                 <i class="fas fa-award text-5xl mb-3"></i>
                 <h1 class="text-2xl font-bold">Quản lý CME</h1>
                 <p class="text-sky-100 text-sm mt-1">Bệnh viện Nhi đồng TP. Cần Thơ</p>
+                <p class="text-white font-semibold text-base mt-2"><i class="fas fa-building mr-1"></i>Phòng Chỉ đạo tuyến</p>
             </div>
             <div class="p-6 space-y-4">
                 <div>
@@ -94,9 +96,12 @@
                 <button onclick="openPublicRegister()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition">
                     <i class="fas fa-user-plus mr-2"></i>Đăng ký tham dự CME
                 </button>
+                <button onclick="showQrModal()" class="w-full border-2 border-sky-500 text-sky-600 py-3 rounded-lg font-semibold hover:bg-sky-50 transition mt-2">
+                    <i class="fas fa-qrcode mr-2"></i>Quét mã QR để đăng ký
+                </button>
             </div>
             <div class="px-6 pb-4 text-center">
-                <p class="text-gray-400 text-xs">BS. Kiều Việt Tiến Hưng - P.QLCL</p>
+                <p class="text-gray-400 text-xs">BS. Kiều Việt Tiến Hưng - P.CĐT</p>
             </div>
         </div>
     </div>
@@ -199,7 +204,7 @@
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2 sm:gap-3">
                         <i class="fas fa-award text-xl sm:text-2xl"></i>
-                        <div><h1 class="text-base sm:text-xl font-bold">Quản lý CME</h1><p class="text-sky-100 text-xs sm:text-sm">BV Nhi đồng TP. Cần Thơ</p></div>
+                        <div><h1 class="text-base sm:text-xl font-bold">Quản lý CME</h1><p class="text-sky-100 text-xs sm:text-sm">BV Nhi đồng TP. Cần Thơ - <span class="text-white font-semibold">P. Chỉ đạo tuyến</span></p></div>
                     </div>
                     <div class="flex items-center gap-3">
                         <div id="user-info" class="text-right hidden">
@@ -721,7 +726,12 @@ async function initFirebase() {
         
         document.getElementById('loading-overlay').classList.add('hidden');
         document.getElementById('login-modal').classList.add('active');
-        
+
+        // Auto-open public register if URL has ?register=1
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('register') === '1') {
+            openPublicRegister();
+        }
     } catch (err) {
         console.error('Firebase error:', err);
         alert('Lỗi kết nối Firebase: ' + err.message);
@@ -1491,11 +1501,91 @@ async function exportRegListExcel() {
     a.click();
 }
 
+// ==================== QR CODE FUNCTIONS ====================
+
+let qrCodeInstance = null;
+
+function getRegisterUrl() {
+    // Always use the deployed GitHub Pages URL for QR code
+    return 'https://kieuviettienhung-coder.github.io/cmebnvd/?register=1';
+}
+
+function showQrModal() {
+    const modal = document.getElementById('qr-modal');
+    const container = document.getElementById('qr-code-container');
+    const urlDisplay = document.getElementById('qr-url-display');
+    const regUrl = getRegisterUrl();
+
+    // Clear previous QR code
+    container.innerHTML = '';
+    urlDisplay.textContent = regUrl;
+
+    // Generate QR code
+    qrCodeInstance = new QRCode(container, {
+        text: regUrl,
+        width: 220,
+        height: 220,
+        colorDark: '#0c4a6e',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H
+    });
+
+    modal.classList.add('active');
+}
+
+function closeQrModal() {
+    document.getElementById('qr-modal').classList.remove('active');
+}
+
+function printQr() {
+    const container = document.getElementById('qr-code-container');
+    const img = container.querySelector('img') || container.querySelector('canvas');
+    if (!img) return alert('Chưa tạo mã QR!');
+
+    const imgSrc = img.tagName === 'CANVAS' ? img.toDataURL() : img.src;
+    const printWin = window.open('', '_blank');
+    printWin.document.write(`
+        <html><head><title>Mã QR Đăng ký CME</title>
+        <style>body{text-align:center;font-family:Arial,sans-serif;padding:40px;}
+        h1{color:#0c4a6e;margin-bottom:5px;} h2{color:#047857;margin-bottom:20px;font-weight:normal;}
+        p{color:#666;margin-top:20px;font-size:14px;}
+        .url{font-size:11px;color:#999;word-break:break-all;margin-top:10px;}
+        </style></head><body>
+        <h1>Đăng ký tham dự CME</h1>
+        <h2>BV Nhi đồng TP. Cần Thơ - Phòng Chỉ đạo tuyến</h2>
+        <img src="${imgSrc}" style="width:250px;height:250px;">
+        <p>Quét mã QR bằng camera điện thoại để đăng ký nhanh</p>
+        <p class="url">${getRegisterUrl()}</p>
+        </body></html>
+    `);
+    printWin.document.close();
+    printWin.onload = () => { printWin.print(); };
+}
+
 document.addEventListener('DOMContentLoaded', initFirebase);
 </script>
 
 <!-- Author Credit -->
-<div class="author-credit">BS. Kiều Việt Tiến Hưng - P.QLCL</div>
+<div class="author-credit">BS. Kiều Việt Tiến Hưng - P.CĐT</div>
+
+<!-- QR Code Modal -->
+<div id="qr-modal" class="modal fixed inset-0 bg-black/50 items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div class="bg-gradient-to-r from-sky-600 to-emerald-600 px-5 py-4 text-center text-white">
+            <h3 class="font-semibold text-lg"><i class="fas fa-qrcode mr-2"></i>Mã QR Đăng ký CME</h3>
+            <p class="text-sky-100 text-xs mt-1">Quét mã để vào trang đăng ký</p>
+        </div>
+        <div class="p-6 flex flex-col items-center">
+            <div id="qr-code-container" class="mb-4"></div>
+            <p class="text-gray-500 text-sm text-center mb-2">Dùng camera điện thoại quét mã QR này để vào trang đăng ký CME nhanh chóng</p>
+            <p id="qr-url-display" class="text-xs text-gray-400 break-all text-center"></p>
+        </div>
+        <div class="flex gap-3 px-5 py-4 border-t bg-gray-50">
+            <button onclick="closeQrModal()" class="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-100">Đóng</button>
+            <button onclick="printQr()" class="flex-1 px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700"><i class="fas fa-print mr-1"></i>In mã QR</button>
+        </div>
+    </div>
+</div>
 
 </body>
 </html>
