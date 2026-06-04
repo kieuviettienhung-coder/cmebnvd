@@ -340,13 +340,22 @@
             <!-- Assign Tab -->
             <div id="content-assign" class="tab-content hidden">
                 <div class="bg-white rounded-xl shadow-sm border p-4 mb-4">
-                    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-                        <select id="assign-cme" onchange="renderAssign()" class="border rounded-lg px-3 py-2"><option value="">-- Chọn CME --</option></select>
+                    <div class="grid grid-cols-2 md:grid-cols-7 gap-3">
+                        <select id="assign-year" onchange="updateCmeSelect(); renderAssign()" class="border rounded-lg px-3 py-2">
+                            <option value="">Tất cả năm</option>
+                            <option value="2025">2025</option>
+                            <option value="2026" selected>2026</option>
+                            <option value="2027">2027</option>
+                            <option value="2028">2028</option>
+                            <option value="2029">2029</option>
+                            <option value="2030">2030</option>
+                        </select>
+                        <select id="assign-cme" onchange="renderAssign()" class="border rounded-lg px-3 py-2 md:col-span-2"><option value="">-- Chọn CME --</option></select>
                         <input type="text" id="assign-search" oninput="renderAssign()" placeholder="Tìm kiếm..." class="border rounded-lg px-3 py-2">
                         <select id="assign-cd" onchange="renderAssign()" class="border rounded-lg px-3 py-2"><option value="">Tất cả chức danh</option><option value="BS">Bác sĩ</option><option value="ĐD">Điều dưỡng</option><option value="KTV">Kỹ thuật viên</option><option value="DS">Dược sĩ</option><option value="Kế toán">Kế toán</option><option value="Kỹ sư">Kỹ sư</option><option value="Khác">Khác</option></select>
                         <select id="assign-khoa" onchange="renderAssign()" class="border rounded-lg px-3 py-2"></select>
                         <select id="assign-role" onchange="renderAssign()" class="border rounded-lg px-3 py-2"><option value="">Tất cả vai trò</option><option value="attendee">Tham dự</option><option value="presenter">Chủ tọa/BCV</option></select>
-                        <button onclick="saveAssignments()" id="btn-save-assign" class="action-btn bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled><i class="fas fa-save mr-1"></i> Lưu</button>
+                        <button onclick="saveAssignments()" id="btn-save-assign" class="action-btn bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed col-span-2 md:col-span-1" disabled><i class="fas fa-save mr-1"></i> Lưu</button>
                     </div>
                 </div>
                 <div id="assign-info" class="mb-2 text-sm text-gray-600"></div>
@@ -819,7 +828,15 @@ function updateKhoaSelects() {
     });
 }
 function updateEmpCmeSelect() { const sel = document.getElementById('emp-cme'); if (sel) { const v = sel.value; sel.innerHTML = '<option value="">Tất cả CME</option>' + cmeList.map(c => `<option value="${c.id}">${c.name}</option>`).join(''); sel.value = v; } }
-function updateCmeSelect() { document.getElementById('assign-cme').innerHTML = '<option value="">-- Chọn CME --</option>' + cmeList.map(c => `<option value="${c.id}">${c.name} (${c.hours}h)</option>`).join(''); }
+function updateCmeSelect() {
+    const year = document.getElementById('assign-year')?.value || '';
+    const filtered = year ? cmeList.filter(c => c.date && c.date.startsWith(year)) : cmeList;
+    const sel = document.getElementById('assign-cme');
+    const prevVal = sel.value;
+    sel.innerHTML = '<option value="">-- Chọn CME --</option>' + filtered.map(c => `<option value="${c.id}">${c.date ? c.date.substring(5) + ' ' : ''}${c.name} (${c.hours}h)</option>`).join('');
+    // Restore selection if still in filtered list
+    if (filtered.some(c => c.id == prevVal)) sel.value = prevVal;
+}
 
 function showTab(t) {
     document.querySelectorAll('.tab-content').forEach(e => e.classList.add('hidden'));
