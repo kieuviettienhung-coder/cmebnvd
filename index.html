@@ -1429,14 +1429,16 @@ async function exportRegListExcel() {
         return alert('Không có dữ liệu đăng ký để xuất!');
     }
 
-    // Sort by CME date, then by registration time
+    // Sort by khoa phong, then by name
     regs.sort((a, b) => {
-        const cmeA = cmeList.find(c => c.id == a.cmeId);
-        const cmeB = cmeList.find(c => c.id == b.cmeId);
-        const dateA = cmeA?.date || '';
-        const dateB = cmeB?.date || '';
-        if (dateA !== dateB) return dateA.localeCompare(dateB);
-        return (a.registeredAt || '').localeCompare(b.registeredAt || '');
+        const empA = employees.find(e => e.id == a.empId);
+        const empB = employees.find(e => e.id == b.empId);
+        const khoaA = empA?.khoaPhong || a.empKhoa || '';
+        const khoaB = empB?.khoaPhong || b.empKhoa || '';
+        if (khoaA !== khoaB) return khoaA.localeCompare(khoaB);
+        const nameA = a.empName || empA?.hoTen || '';
+        const nameB = b.empName || empB?.hoTen || '';
+        return nameA.localeCompare(nameB);
     });
 
     const wb = new ExcelJS.Workbook();
@@ -1579,12 +1581,11 @@ async function exportAssignExcel() {
     if (roleFilter === 'attendee') emps = emps.filter(e => a.attendees.includes(e.id));
     else if (roleFilter === 'presenter') emps = emps.filter(e => a.presenters.includes(e.id));
 
-    // Sort: presenters first, then by department
+    // Sort by department, then by name
     emps.sort((x, y) => {
-        const xP = a.presenters.includes(x.id) ? 0 : 1;
-        const yP = a.presenters.includes(y.id) ? 0 : 1;
-        if (xP !== yP) return xP - yP;
-        return (x.khoaPhong || '').localeCompare(y.khoaPhong || '');
+        const khoaCmp = (x.khoaPhong || '').localeCompare(y.khoaPhong || '');
+        if (khoaCmp !== 0) return khoaCmp;
+        return (x.hoTen || '').localeCompare(y.hoTen || '');
     });
 
     const wb = new ExcelJS.Workbook();
