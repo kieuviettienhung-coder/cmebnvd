@@ -368,7 +368,10 @@
             <div id="content-employee" class="tab-content hidden">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-lg font-semibold">Quản lý Nhân viên (<span id="emp-count">0</span>)</h2>
-                    <button onclick="openStaffModal()" class="action-btn bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700"><i class="fas fa-user-plus mr-1"></i> Thêm NV</button>
+                    <div class="flex gap-2">
+                        <button onclick="toggleEmpStats()" class="action-btn bg-sky-600 text-white px-4 py-2 rounded-lg hover:bg-sky-700"><i class="fas fa-chart-bar mr-1"></i> Thống kê</button>
+                        <button onclick="openStaffModal()" class="action-btn bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700"><i class="fas fa-user-plus mr-1"></i> Thêm NV</button>
+                    </div>
                 </div>
                 <div class="bg-white rounded-xl shadow-sm border p-4 mb-4">
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
@@ -379,6 +382,16 @@
                         <select id="emp-year" onchange="renderEmployee()" class="border rounded-lg px-3 py-2"><option value="">Tất cả năm</option><option value="2025" selected>2025</option><option value="2026">2026</option><option value="2027">2027</option><option value="2028">2028</option><option value="2029">2029</option><option value="2030">2030</option></select>
                         <select id="emp-quarter" onchange="renderEmployee()" class="border rounded-lg px-3 py-2"><option value="">Cả năm</option><option value="1">Quý 1</option><option value="2">Quý 2</option><option value="3">Quý 3</option><option value="4">Quý 4</option></select>
                     </div>
+                </div>
+                <div id="emp-stats-section" class="bg-white rounded-xl shadow-sm border mb-4 hidden">
+                    <div class="flex justify-between items-center p-4 border-b">
+                        <h3 class="font-semibold text-gray-700"><i class="fas fa-chart-bar text-sky-600 mr-2"></i>Thống kê nhân sự theo Khoa/Phòng</h3>
+                        <div class="flex gap-2">
+                            <button onclick="exportEmpStatsExcel()" class="px-3 py-1.5 bg-sky-600 text-white rounded-lg text-sm hover:bg-sky-700"><i class="fas fa-file-excel mr-1"></i>Xuất Excel</button>
+                            <button onclick="toggleEmpStats()" class="px-3 py-1.5 bg-gray-200 rounded-lg text-sm hover:bg-gray-300"><i class="fas fa-times"></i></button>
+                        </div>
+                    </div>
+                    <div id="emp-stats-table" class="p-4 overflow-x-auto"></div>
                 </div>
                 <div id="emp-list" class="bg-white rounded-xl shadow-sm border max-h-[600px] overflow-y-auto"></div>
             </div>
@@ -1016,6 +1029,176 @@ function saveStaff() {
 }
 function editStaff(id) { openStaffModal(id); }
 function deleteStaff(id) { if (appLocked && currentUser?.role !== 'admin') return; if (!confirm('Xóa NV?')) return; employees = employees.filter(e => e.id !== id); Object.keys(assignments).forEach(k => { if (assignments[k]) { assignments[k].attendees = (assignments[k].attendees || []).filter(eid => eid !== id); assignments[k].presenters = (assignments[k].presenters || []).filter(eid => eid !== id); } }); saveEmployees(); save(); }
+
+// ==================== EMPLOYEE STATS FUNCTIONS ====================
+
+function toggleEmpStats() {
+    const section = document.getElementById('emp-stats-section');
+    if (section.classList.contains('hidden')) {
+        section.classList.remove('hidden');
+        renderEmpStats();
+    } else {
+        section.classList.add('hidden');
+    }
+}
+
+function renderEmpStats() {
+    const khoas = getKhoas();
+    const cdKeys = Object.keys(CD_FULL);
+    const data = {};
+    const totals = {};
+    cdKeys.forEach(cd => totals[cd] = 0);
+    let grandTotal = 0;
+
+    khoas.forEach(k => {
+        data[k] = {};
+        cdKeys.forEach(cd => data[k][cd] = 0);
+        employees.filter(e => e.khoaPhong === k).forEach(e => {
+            const cd = e.chucDanh || 'Khác';
+            if (data[k][cd] !== undefined) data[k][cd]++;
+            else data[k]['Khác']++;
+        });
+        cdKeys.forEach(cd => totals[cd] += data[k][cd]);
+    });
+    // Employees without department
+    const noDept = employees.filter(e => !e.khoaPhong);
+    if (noDept.length > 0) {
+        data['(Chưa xếp khoa)'] = {};
+        cdKeys.forEach(cd => data['(Chưa xếp khoa)'][cd] = 0);
+        noDept.forEach(e => {
+            const cd = e.chucDanh || 'Khác';
+            if (data['(Chưa xếp khoa)'][cd] !== undefined) data['(Chưa xếp khoa)'][cd]++;
+            else data['(Chưa xếp khoa)']['Khác']++;
+        });
+        cdKeys.forEach(cd => totals[cd] += data['(Chưa xếp khoa)'][cd]);
+    }
+
+    const allKhoas = [...khoas, ...(noDept.length > 0 ? ['(Chưa xếp khoa)'] : [])];
+
+    let html = `<table class="w-full text-sm"><thead class="bg-gray-50 border-b"><tr>
+        <th class="px-3 py-2 text-left text-xs font-semibold">Khoa/Phòng</th>
+        ${cdKeys.map(cd => `<th class="px-2 py-2 text-center text-xs font-semibold"><span class="px-2 py-0.5 rounded-full ${COLORS[cd]}">${cd}</span></th>`).join('')}
+        <th class="px-3 py-2 text-center text-xs font-semibold bg-sky-50">Tổng</th>
+    </tr></thead><tbody class="divide-y">`;
+
+    allKhoas.forEach(k => {
+        const rowTotal = cdKeys.reduce((s, cd) => s + data[k][cd], 0);
+        grandTotal += rowTotal;
+        html += `<tr class="hover:bg-gray-50">
+            <td class="px-3 py-2 font-medium">${k}</td>
+            ${cdKeys.map(cd => `<td class="px-2 py-2 text-center ${data[k][cd] ? '' : 'text-gray-300'}">${data[k][cd] || '-'}</td>`).join('')}
+            <td class="px-3 py-2 text-center font-bold text-sky-700 bg-sky-50">${rowTotal}</td>
+        </tr>`;
+    });
+
+    html += `<tr class="bg-amber-50 font-bold border-t-2">
+        <td class="px-3 py-2">TỔNG CỘNG</td>
+        ${cdKeys.map(cd => `<td class="px-2 py-2 text-center">${totals[cd]}</td>`).join('')}
+        <td class="px-3 py-2 text-center text-sky-700 bg-sky-100">${grandTotal}</td>
+    </tr></tbody></table>`;
+
+    document.getElementById('emp-stats-table').innerHTML = html;
+}
+
+async function exportEmpStatsExcel() {
+    const khoas = getKhoas();
+    const cdKeys = Object.keys(CD_FULL);
+    const data = {};
+    const totals = {};
+    cdKeys.forEach(cd => totals[cd] = 0);
+
+    khoas.forEach(k => {
+        data[k] = {};
+        cdKeys.forEach(cd => data[k][cd] = 0);
+        employees.filter(e => e.khoaPhong === k).forEach(e => {
+            const cd = e.chucDanh || 'Khác';
+            if (data[k][cd] !== undefined) data[k][cd]++;
+            else data[k]['Khác']++;
+        });
+        cdKeys.forEach(cd => totals[cd] += data[k][cd]);
+    });
+    const noDept = employees.filter(e => !e.khoaPhong);
+    if (noDept.length > 0) {
+        data['(Chưa xếp khoa)'] = {};
+        cdKeys.forEach(cd => data['(Chưa xếp khoa)'][cd] = 0);
+        noDept.forEach(e => {
+            const cd = e.chucDanh || 'Khác';
+            if (data['(Chưa xếp khoa)'][cd] !== undefined) data['(Chưa xếp khoa)'][cd]++;
+            else data['(Chưa xếp khoa)']['Khác']++;
+        });
+        cdKeys.forEach(cd => totals[cd] += data['(Chưa xếp khoa)'][cd]);
+    }
+    const allKhoas = [...khoas, ...(noDept.length > 0 ? ['(Chưa xếp khoa)'] : [])];
+
+    const wb = new ExcelJS.Workbook();
+    const df = { name: 'Times New Roman', size: 12 };
+    const ws = wb.addWorksheet('Thống kê nhân sự');
+
+    // Title
+    const colCount = cdKeys.length + 2;
+    ws.mergeCells(1, 1, 1, colCount);
+    ws.getCell('A1').value = 'THỐNG KÊ NHÂN SỰ THEO KHOA/PHÒNG';
+    ws.getCell('A1').font = { ...df, size: 14, bold: true };
+    ws.getCell('A1').alignment = { horizontal: 'center' };
+    ws.getRow(1).height = 25;
+
+    ws.mergeCells(2, 1, 2, colCount);
+    ws.getCell('A2').value = `Bệnh viện Nhi đồng TP. Cần Thơ - Ngày: ${new Date().toLocaleDateString('vi-VN')}`;
+    ws.getCell('A2').font = { ...df, italic: true };
+    ws.getCell('A2').alignment = { horizontal: 'center' };
+
+    ws.addRow([]);
+
+    // Header
+    const headers = ['Khoa/Phòng', ...cdKeys.map(cd => CD_FULL[cd]), 'Tổng'];
+    const hr = ws.addRow(headers);
+    hr.font = { ...df, bold: true };
+    hr.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    hr.height = 25;
+    hr.eachCell(cell => {
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } };
+    });
+
+    // Data rows
+    let grandTotal = 0;
+    allKhoas.forEach(k => {
+        const rowTotal = cdKeys.reduce((s, cd) => s + data[k][cd], 0);
+        grandTotal += rowTotal;
+        const row = ws.addRow([k, ...cdKeys.map(cd => data[k][cd] || ''), rowTotal]);
+        row.font = df;
+        row.alignment = { vertical: 'middle' };
+        row.eachCell(cell => {
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        row.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+        for (let i = 2; i <= colCount; i++) row.getCell(i).alignment = { horizontal: 'center', vertical: 'middle' };
+        // Bold total column
+        row.getCell(colCount).font = { ...df, bold: true };
+    });
+
+    // Total row
+    const totalRow = ws.addRow(['TỔNG CỘNG', ...cdKeys.map(cd => totals[cd]), grandTotal]);
+    totalRow.font = { ...df, bold: true };
+    totalRow.alignment = { horizontal: 'center', vertical: 'middle' };
+    totalRow.eachCell(cell => {
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
+    });
+    totalRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+
+    // Column widths
+    ws.getColumn(1).width = 20;
+    for (let i = 2; i <= cdKeys.length + 1; i++) ws.getColumn(i).width = 14;
+    ws.getColumn(colCount).width = 10;
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `thong_ke_nhan_su_${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.click();
+}
 
 function renderReport() {
     const fc = getReportFilteredCme(), stats = {}, rates = {};
