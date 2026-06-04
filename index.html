@@ -1331,33 +1331,58 @@ function formatRegTime(isoStr) {
     return `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
-function confirmRegistration(regId) {
+function confirmRegistration(regId, skipSave = false) {
     const reg = registrations[regId];
     if (!reg || !db) return;
 
     // Mark as confirmed
     db.ref('registrations/' + regId + '/confirmed').set(true);
 
-    // Add to assignments (attendees)
+    // Add to assignments (attendees) - auto-link to Cấp CME tab
     const cmeId = reg.cmeId;
     const empId = reg.empId;
     if (!assignments[cmeId]) assignments[cmeId] = { attendees: [], presenters: [] };
-    if (!assignments[cmeId].attendees.includes(empId)) {
+    if (!assignments[cmeId].attendees) assignments[cmeId].attendees = [];
+    if (!assignments[cmeId].presenters) assignments[cmeId].presenters = [];
+    if (!assignments[cmeId].attendees.includes(empId) && !assignments[cmeId].presenters.includes(empId)) {
         assignments[cmeId].attendees.push(empId);
-        save();
+    }
+    if (!skipSave) {
+        db.ref('assignments').set(assignments);
     }
 }
 
 function confirmAllRegistrations() {
     const filterCme = document.getElementById('reg-filter-cme')?.value || '';
+    const filterYear = document.getElementById('reg-filter-year')?.value || '';
     let regs = Object.values(registrations).filter(r => !r.confirmed);
+    // Filter by year
+    if (filterYear) {
+        regs = regs.filter(r => {
+            const cme = cmeList.find(c => c.id == r.cmeId);
+            return cme && cme.date && cme.date.startsWith(filterYear);
+        });
+    }
     if (filterCme) {
         regs = regs.filter(r => r.cmeId == filterCme);
     }
     if (regs.length === 0) return alert('Không có đăng ký nào cần xác nhận!');
-    if (!confirm(`Xác nhận ${regs.length} đăng ký?`)) return;
+    if (!confirm(`Xác nhận ${regs.length} đăng ký?\n\nNhân viên sẽ được tự động thêm vào tab Cấp CME ở trạng thái "Tham dự".`)) return;
 
-    regs.forEach(r => confirmRegistration(r.id));
+    // Batch process: confirm all without saving each time
+    regs.forEach(r => confirmRegistration(r.id, true));
+
+    // Save assignments once at the end
+    if (db) {
+        db.ref('assignments').set(assignments);
+    }
+
+    // Count unique CMEs affected
+    const cmeIds = [...new Set(regs.map(r => r.cmeId))];
+    const cmeNames = cmeIds.map(id => cmeList.find(c => c.id == id)?.name || '').filter(n => n);
+
+    alert(`✅ Đã xác nhận ${regs.length} đăng ký thành công!\n\n${regs.length} nhân viên đã được tự động cấp CME (Tham dự) tại tab "Cấp CME".\n\nCME: ${cmeNames.join(', ')}`);
+    renderRegistrations();
 }
 
 function deleteRegistration(regId) {
