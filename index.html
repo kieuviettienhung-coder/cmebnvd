@@ -340,7 +340,7 @@
             <!-- Assign Tab -->
             <div id="content-assign" class="tab-content hidden">
                 <div class="bg-white rounded-xl shadow-sm border p-4 mb-4">
-                    <div class="grid grid-cols-2 md:grid-cols-7 gap-3">
+                    <div class="grid grid-cols-2 md:grid-cols-8 gap-3">
                         <select id="assign-year" onchange="updateCmeSelect(); renderAssign()" class="border rounded-lg px-3 py-2">
                             <option value="">Tất cả năm</option>
                             <option value="2025">2025</option>
@@ -355,7 +355,8 @@
                         <select id="assign-cd" onchange="renderAssign()" class="border rounded-lg px-3 py-2"><option value="">Tất cả chức danh</option><option value="BS">Bác sĩ</option><option value="ĐD">Điều dưỡng</option><option value="KTV">Kỹ thuật viên</option><option value="DS">Dược sĩ</option><option value="Kế toán">Kế toán</option><option value="Kỹ sư">Kỹ sư</option><option value="Khác">Khác</option></select>
                         <select id="assign-khoa" onchange="renderAssign()" class="border rounded-lg px-3 py-2"></select>
                         <select id="assign-role" onchange="renderAssign()" class="border rounded-lg px-3 py-2"><option value="">Tất cả vai trò</option><option value="attendee">Tham dự</option><option value="presenter">Chủ tọa/BCV</option></select>
-                        <button onclick="saveAssignments()" id="btn-save-assign" class="action-btn bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed col-span-2 md:col-span-1" disabled><i class="fas fa-save mr-1"></i> Lưu</button>
+                        <button onclick="saveAssignments()" id="btn-save-assign" class="action-btn bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled><i class="fas fa-save mr-1"></i> Lưu</button>
+                        <button onclick="exportAssignExcel()" class="action-btn bg-sky-600 text-white px-4 py-2 rounded-lg hover:bg-sky-700 col-span-2 md:col-span-1"><i class="fas fa-file-excel mr-1"></i> Xuất Excel</button>
                     </div>
                 </div>
                 <div id="assign-info" class="mb-2 text-sm text-gray-600"></div>
@@ -1450,7 +1451,7 @@ async function exportRegListExcel() {
     }
 
     // Title row
-    ws.mergeCells('A1:G1');
+    ws.mergeCells('A1:H1');
     const titleCell = ws.getCell('A1');
     titleCell.value = 'DANH SÁCH ĐĂNG KÝ THAM DỰ CME';
     titleCell.font = { ...df, size: 14, bold: true };
@@ -1458,15 +1459,22 @@ async function exportRegListExcel() {
     ws.getRow(1).height = 25;
 
     // Subtitle row
-    ws.mergeCells('A2:G2');
+    ws.mergeCells('A2:H2');
     const subCell = ws.getCell('A2');
     subCell.value = `CME: ${titleCme}${filterYear ? ' - Năm ' + filterYear : ''}`;
     subCell.font = { ...df, italic: true };
     subCell.alignment = { horizontal: 'center', vertical: 'middle' };
     ws.getRow(2).height = 20;
 
+    // Subtitle row 2 - date generated
+    ws.mergeCells('A3:H3');
+    const dateCell = ws.getCell('A3');
+    dateCell.value = `Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}`;
+    dateCell.font = { ...df, size: 10, italic: true };
+    dateCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
     // Header row
-    const headers = ['STT', 'Họ và Tên', 'Khoa/Phòng', 'Tên CME', 'Ngày tổ chức', 'Trạng thái', 'Ký tên'];
+    const headers = ['STT', 'Họ và Tên', 'Năm sinh', 'Khoa/Phòng', 'Tên CME', 'Ngày tổ chức', 'Trạng thái', 'Ký tên'];
     ws.addRow([]);
     const headerRow = ws.addRow(headers);
     headerRow.font = { ...df, bold: true };
@@ -1493,6 +1501,7 @@ async function exportRegListExcel() {
         const row = ws.addRow([
             idx + 1,
             r.empName || emp?.hoTen || '',
+            emp?.namSinh || '',
             r.empKhoa || emp?.khoaPhong || '',
             cme?.name || r.cmeName || '',
             cme?.date || '',
@@ -1512,14 +1521,16 @@ async function exportRegListExcel() {
         });
         // Center align STT and status
         row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-        row.getCell(5).alignment = { horizontal: 'center', vertical: 'middle' };
+        row.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
         row.getCell(6).alignment = { horizontal: 'center', vertical: 'middle' };
+        row.getCell(7).alignment = { horizontal: 'center', vertical: 'middle' };
     });
 
     // Set column widths
     ws.columns = [
         { width: 6 },   // STT
         { width: 25 },  // Họ tên
+        { width: 12 },  // Năm sinh
         { width: 20 },  // Khoa/Phòng
         { width: 35 },  // Tên CME
         { width: 15 },  // Ngày
@@ -1541,6 +1552,133 @@ async function exportRegListExcel() {
     a.href = URL.createObjectURL(blob);
     a.download = `${filename}.xlsx`;
     a.click();
+}
+
+async function exportAssignExcel() {
+    const cmeId = document.getElementById('assign-cme').value;
+    const assignYear = document.getElementById('assign-year')?.value || '';
+    if (!cmeId) return alert('Vui lòng chọn CME trước khi xuất!');
+
+    const cme = cmeList.find(c => c.id == cmeId);
+    if (!cme) return;
+    const a = getAssign(cmeId);
+    const allIds = [...(a.attendees || []), ...(a.presenters || [])];
+    if (allIds.length === 0) return alert('Chưa có nhân viên nào được cấp CME này!');
+
+    // Get current filters
+    const search = document.getElementById('assign-search').value.toLowerCase();
+    const cd = document.getElementById('assign-cd').value;
+    const khoa = document.getElementById('assign-khoa').value;
+    const roleFilter = document.getElementById('assign-role').value;
+
+    let emps = employees.filter(e => allIds.includes(e.id));
+    // Apply same filters as renderAssign
+    if (search) emps = emps.filter(e => e.hoTen.toLowerCase().includes(search) || e.khoaPhong.toLowerCase().includes(search));
+    if (cd) emps = emps.filter(e => e.chucDanh === cd);
+    if (khoa) emps = emps.filter(e => e.khoaPhong === khoa);
+    if (roleFilter === 'attendee') emps = emps.filter(e => a.attendees.includes(e.id));
+    else if (roleFilter === 'presenter') emps = emps.filter(e => a.presenters.includes(e.id));
+
+    // Sort: presenters first, then by department
+    emps.sort((x, y) => {
+        const xP = a.presenters.includes(x.id) ? 0 : 1;
+        const yP = a.presenters.includes(y.id) ? 0 : 1;
+        if (xP !== yP) return xP - yP;
+        return (x.khoaPhong || '').localeCompare(y.khoaPhong || '');
+    });
+
+    const wb = new ExcelJS.Workbook();
+    const df = { name: 'Times New Roman', size: 12 };
+    const ws = wb.addWorksheet('Cấp CME');
+
+    // Title
+    ws.mergeCells('A1:H1');
+    ws.getCell('A1').value = 'DANH SÁCH CẤP GIờ ĐÀO TẠO LIÊN TỤC (CME)';
+    ws.getCell('A1').font = { ...df, size: 14, bold: true };
+    ws.getCell('A1').alignment = { horizontal: 'center' };
+    ws.getRow(1).height = 25;
+
+    // Subtitle
+    ws.mergeCells('A2:H2');
+    ws.getCell('A2').value = `CME: ${cme.name}`;
+    ws.getCell('A2').font = { ...df, size: 12, bold: true };
+    ws.getCell('A2').alignment = { horizontal: 'center' };
+
+    ws.mergeCells('A3:H3');
+    ws.getCell('A3').value = `Ngày tổ chức: ${cme.date || 'Chưa xác định'} | Số giờ TD: ${cme.hours}h | Số giờ CT: ${cme.hoursPresenter || cme.hours}h`;
+    ws.getCell('A3').font = { ...df, italic: true };
+    ws.getCell('A3').alignment = { horizontal: 'center' };
+
+    ws.addRow([]);
+
+    // Header
+    const headers = ['STT', 'Họ và Tên', 'Năm sinh', 'Khoa/Phòng', 'Chức danh', 'Vai trò', 'Số giờ', 'Ký tên'];
+    const hr = ws.addRow(headers);
+    hr.font = { ...df, bold: true };
+    hr.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    hr.height = 25;
+    hr.eachCell(cell => {
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } };
+    });
+
+    // Data
+    emps.forEach((e, idx) => {
+        const isP = a.presenters.includes(e.id);
+        const role = isP ? 'Chủ tọa/BCV' : 'Tham dự';
+        const hours = isP ? (cme.hoursPresenter || cme.hours) : cme.hours;
+        const row = ws.addRow([
+            idx + 1,
+            e.hoTen,
+            e.namSinh || '',
+            e.khoaPhong || '',
+            e.chucDanh || '',
+            role,
+            hours,
+            ''
+        ]);
+        row.font = df;
+        row.alignment = { vertical: 'middle', wrapText: true };
+        row.height = 28;
+        row.eachCell(cell => {
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+        row.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
+        row.getCell(5).alignment = { horizontal: 'center', vertical: 'middle' };
+        row.getCell(6).alignment = { horizontal: 'center', vertical: 'middle' };
+        row.getCell(7).alignment = { horizontal: 'center', vertical: 'middle' };
+        if (isP) {
+            row.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
+        }
+    });
+
+    // Summary row
+    const totalAtt = emps.filter(e => a.attendees.includes(e.id)).length;
+    const totalPre = emps.filter(e => a.presenters.includes(e.id)).length;
+    ws.addRow([]);
+    const sumRow = ws.addRow(['', `Tổng: ${emps.length} người (TD: ${totalAtt}, CT/BCV: ${totalPre})`, '', '', '', '', '', '']);
+    sumRow.font = { ...df, bold: true, italic: true };
+
+    // Column widths
+    ws.columns = [
+        { width: 6 },   // STT
+        { width: 28 },  // Họ tên
+        { width: 12 },  // Năm sinh
+        { width: 18 },  // Khoa
+        { width: 12 },  // CD
+        { width: 14 },  // Vai trò
+        { width: 10 },  // Giờ
+        { width: 20 }   // Ký tên
+    ];
+
+    const cmeName = cme.name.replace(/[^a-zA-Z0-9\u00C0-\u024F]/g, '_').substring(0, 30);
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `cap_cme_${cmeName}_${cme.date || 'nodate'}.xlsx`;
+    link.click();
 }
 
 // ==================== QR CODE FUNCTIONS ====================
